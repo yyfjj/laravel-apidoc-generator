@@ -14,7 +14,6 @@
 @foreach($settings['languages'] as $language)
 @include("apidoc::partials.example-requests.$language")
 
-
 @endforeach
 
 @if(in_array('GET',$route['methods']) || (isset($route['showresponse']) && $route['showresponse']))
@@ -42,21 +41,22 @@
 ```
 @endif
 @endif
-
 ### HTTP Request
 @foreach($route['methods'] as $method)
 `{{$method}} {{$route['uri']}}`
 
 @endforeach
-@if(count($route['bodyParameters']))
-#### Body Parameters
 
-Parameter | Type | Status | Description
---------- | ------- | ------- | ------- | -----------
-@foreach($route['bodyParameters'] as $attribute => $parameter)
-    {{$attribute}} | {{$parameter['type']}} | @if($parameter['required']) required @else optional @endif | {!! $parameter['description'] !!}
+@if(count($route['urlParameters']))
+#### Url Parameters
+
+Parameter | Status | Description
+--------- | ------- | ------- | -----------
+@foreach($route['urlParameters'] as $attribute => $parameter)
+    {{$attribute}} | @if($parameter['required']) required @else optional @endif | {!! $parameter['description'] !!}
 @endforeach
 @endif
+
 @if(count($route['queryParameters']))
 #### Query Parameters
 
@@ -66,5 +66,26 @@ Parameter | Status | Description
     {{$attribute}} | @if($parameter['required']) required @else optional @endif | {!! $parameter['description'] !!}
 @endforeach
 @endif
+
+@if(count($route['bodyParameters']))
+#### Body Parameters
+
+Parameter | Type | Status | Description
+--------- | ------- | ------- | ------- | -----------
+@foreach($route['bodyParameters'] as $attribute => $parameter)
+    {{$attribute}} | {{$parameter['type']}} | @if($parameter['required']) required @else optional @endif | {!! $parameter['description'] !!}
+@endforeach
+@endif
+@if(count($route['jsonParameters']))
+#### Json Parameters
+
+Parameter | Type | Status | Description
+--------- | ------- | ------- | ------- | -----------
+@foreach($route['jsonParameters'] as $attribute => $parameter)
+    {{$attribute}} | {{$parameter['type']}} | @if($parameter['required']) required @else optional @endif | {!! $parameter['description'] !!}
+@endforeach
+@endif
+
+
 
 <!-- END_{{$route['id']}} -->

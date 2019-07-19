@@ -61,10 +61,16 @@ class Generator
         $docBlock = $this->parseDocBlock($method);
         $bodyParameters = $this->getBodyParameters($method, $docBlock['tags']);
         $queryParameters = $this->getQueryParameters($method, $docBlock['tags']);
+        $queryParameters_1 = $this->getQueryParameters_1($method, $docBlock['tags']);
+        $urlParameters = $this->getUrlParameters($method, $docBlock['tags']);
+        $jsonParameters = $this->getJsonParameters($method, $docBlock['tags']);
         $content = ResponseResolver::getResponse($route, $docBlock['tags'], [
             'rules' => $rulesToApply,
             'body' => $bodyParameters,
             'query' => $queryParameters,
+            'query_1' => $queryParameters_1,
+            'url'=>$urlParameters,
+            'json'=>$jsonParameters,
         ]);
 
         $parsedRoute = [
@@ -76,9 +82,14 @@ class Generator
             'uri' => $this->getUri($route),
             'boundUri' => Utils::getFullUrl($route, $rulesToApply['bindings'] ?? ($rulesToApply['response_calls']['bindings'] ?? [])),
             'queryParameters' => $queryParameters,
+            'queryParameters_1' => $queryParameters_1,
+            'urlParameters' => $urlParameters,
             'bodyParameters' => $bodyParameters,
+            'jsonParameters' => $jsonParameters,
             'cleanBodyParameters' => $this->cleanParams($bodyParameters),
             'cleanQueryParameters' => $this->cleanParams($queryParameters),
+            'cleanUrlParameters'=>$this->cleanParams($urlParameters),
+            'cleanJsonParameters'=>$this->cleanParams($jsonParameters),
             'authenticated' => $this->getAuthStatusFromDocBlock($docBlock['tags']),
             'response' => $content,
             'showresponse' => ! empty($content),
@@ -117,6 +128,37 @@ class Generator
         }
 
         return $this->getBodyParametersFromDocBlock($tags);
+    }
+
+    protected function getJsonParameters(ReflectionMethod $method, array $tags)
+    {
+        foreach ($method->getParameters() as $param) {
+            $paramType = $param->getType();
+            if ($paramType === null) {
+                continue;
+            }
+
+            $parameterClassName = version_compare(phpversion(), '7.1.0', '<')
+                ? $paramType->__toString()
+                : $paramType->getName();
+
+            try {
+                $parameterClass = new ReflectionClass($parameterClassName);
+            } catch (\ReflectionException $e) {
+                continue;
+            }
+
+            if (class_exists('\Illuminate\Foundation\Http\FormRequest') && $parameterClass->isSubclassOf(\Illuminate\Foundation\Http\FormRequest::class) || class_exists('\Dingo\Api\Http\FormRequest') && $parameterClass->isSubclassOf(\Dingo\Api\Http\FormRequest::class)) {
+                $formRequestDocBlock = new DocBlock($parameterClass->getDocComment());
+                $bodyParametersFromDocBlock = $this->getBodyParametersFromDocBlock($formRequestDocBlock->getTags());
+
+                if (count($bodyParametersFromDocBlock)) {
+                    return $bodyParametersFromDocBlock;
+                }
+            }
+        }
+
+        return $this->getJsonParametersFromDocBlock($tags);
     }
 
     /**
@@ -158,6 +200,112 @@ class Generator
     }
 
     /**
+     * @param array $tags
+     *
+     * @return array
+     */
+    protected function getJsonParametersFromDocBlock(array $tags)
+    {
+        $parameters = collect($tags)
+            ->filter(function ($tag) {
+                return $tag instanceof Tag && $tag->getName() === 'jsonParam';
+            })
+            ->mapWithKeys(function ($tag) {
+                preg_match('/(.+?)\s+(.+?)\s+(required\s+)?(.*)/', $tag->getContent(), $content);
+                if (empty($content)) {
+                    // this means only name and type were supplied
+                    list($name, $type) = preg_split('/\s+/', $tag->getContent());
+                    $required = false;
+                    $description = '';
+                } else {
+                    list($_, $name, $type, $required, $description) = $content;
+                    $description = trim($description);
+                    if ($description == 'required' && empty(trim($required))) {
+                        $required = $description;
+                        $description = '';
+                    }
+                    $required = trim($required) == 'required' ? true : false;
+                }
+
+                $type = $this->normalizeParameterType($type);
+                list($description, $example) = $this->parseDescription($description, $type);
+                $value = is_null($example) ? $this->generateDummyValue($type) : $example;
+
+                return [$name => compact('type', 'description', 'required', 'value')];
+            })->toArray();
+
+        return $parameters;
+    }
+
+    protected function getBodyParametersFromDocBlock_1(array $tags)
+    {
+        $parameters = collect($tags)
+            ->filter(function ($tag) {
+                return $tag instanceof Tag && $tag->getName() === 'queryParam';
+            })
+            ->mapWithKeys(function ($tag) {
+                preg_match('/(.+?)\s+(.+?)\s+(required\s+)?(.*)/', $tag->getContent(), $content);
+                if (empty($content)) {
+                    // this means only name and type were supplied
+                    list($name, $type) = preg_split('/\s+/', $tag->getContent());
+                    $required = false;
+                    $description = '';
+                } else {
+                    list($_, $name, $type, $required, $description) = $content;
+                    $description = trim($description);
+                    if ($description == 'required' && empty(trim($required))) {
+                        $required = $description;
+                        $description = '';
+                    }
+                    $required = trim($required) == 'required' ? true : false;
+                }
+
+                $type = $this->normalizeParameterType($type);
+                list($description, $example) = $this->parseDescription($description, $type);
+                $value = is_null($example) ? $this->generateDummyValue($type) : $example;
+
+                return [$name => compact('type', 'description', 'required', 'value')];
+            })->toArray();
+
+        return $parameters;
+    }
+    /**
+     * @param ReflectionMethod $method
+     * @param array $tags
+     *
+     * @return array
+     */
+    protected function getUrlParameters(ReflectionMethod $method, array $tags)
+    {
+        foreach ($method->getParameters() as $param) {
+            $paramType = $param->getType();
+            if ($paramType === null) {
+                continue;
+            }
+
+            $parameterClassName = version_compare(phpversion(), '7.1.0', '<')
+                ? $paramType->__toString()
+                : $paramType->getName();
+
+            try {
+                $parameterClass = new ReflectionClass($parameterClassName);
+            } catch (\ReflectionException $e) {
+                continue;
+            }
+
+            if (class_exists('\Illuminate\Foundation\Http\FormRequest') && $parameterClass->isSubclassOf(\Illuminate\Foundation\Http\FormRequest::class) || class_exists('\Dingo\Api\Http\FormRequest') && $parameterClass->isSubclassOf(\Dingo\Api\Http\FormRequest::class)) {
+                $formRequestDocBlock = new DocBlock($parameterClass->getDocComment());
+                $queryParametersFromDocBlock = $this->getQueryParametersFromDocBlock($formRequestDocBlock->getTags());
+
+                if (count($queryParametersFromDocBlock)) {
+                    return $queryParametersFromDocBlock;
+                }
+            }
+        }
+
+        return $this->getUrlParametersFromDocBlock($tags);
+    }
+    /**
      * @param ReflectionMethod $method
      * @param array $tags
      *
@@ -194,6 +342,77 @@ class Generator
         return $this->getQueryParametersFromDocBlock($tags);
     }
 
+
+    protected function getQueryParameters_1(ReflectionMethod $method, array $tags)
+    {
+        foreach ($method->getParameters() as $param) {
+            $paramType = $param->getType();
+            if ($paramType === null) {
+                continue;
+            }
+
+            $parameterClassName = version_compare(phpversion(), '7.1.0', '<')
+                ? $paramType->__toString()
+                : $paramType->getName();
+
+            try {
+                $parameterClass = new ReflectionClass($parameterClassName);
+            } catch (\ReflectionException $e) {
+                continue;
+            }
+
+            if (class_exists('\Illuminate\Foundation\Http\FormRequest') && $parameterClass->isSubclassOf(\Illuminate\Foundation\Http\FormRequest::class) || class_exists('\Dingo\Api\Http\FormRequest') && $parameterClass->isSubclassOf(\Dingo\Api\Http\FormRequest::class)) {
+                $formRequestDocBlock = new DocBlock($parameterClass->getDocComment());
+                $queryParametersFromDocBlock = $this->getQueryParametersFromDocBlock($formRequestDocBlock->getTags());
+
+                if (count($queryParametersFromDocBlock)) {
+                    return $queryParametersFromDocBlock;
+                }
+            }
+        }
+
+        return $this->getBodyParametersFromDocBlock_1($tags);
+    }
+    /**
+     * @param array $tags
+     *
+     * @return array
+     */
+    protected function getUrlParametersFromDocBlock(array $tags)
+    {
+        $parameters = collect($tags)
+            ->filter(function ($tag) {
+                return $tag instanceof Tag && $tag->getName() === 'urlParam';
+            })
+            ->mapWithKeys(function ($tag) {
+                preg_match('/(.+?)\s+(required\s+)?(.*)/', $tag->getContent(), $content);
+                if (empty($content)) {
+                    // this means only name was supplied
+                    list($name) = preg_split('/\s+/', $tag->getContent());
+                    $required = false;
+                    $description = '';
+                } else {
+                    list($_, $name, $required, $description) = $content;
+                    $description = trim($description);
+                    if ($description == 'required' && empty(trim($required))) {
+                        $required = $description;
+                        $description = '';
+                    }
+                    $required = trim($required) == 'required' ? true : false;
+                }
+
+                list($description, $value) = $this->parseDescription($description, 'string');
+                if (is_null($value)) {
+                    $value = str_contains($description, ['number', 'count', 'page'])
+                        ? $this->generateDummyValue('integer')
+                        : $this->generateDummyValue('string');
+                }
+
+                return [$name => compact('description', 'required', 'value')];
+            })->toArray();
+
+        return $parameters;
+    }
     /**
      * @param array $tags
      *

@@ -51,39 +51,44 @@ class CollectionWriter
                     'name' => $groupName,
                     'description' => '',
                     'item' => $routes->map(function ($route) {
-                        $mode = $route['methods'][0] === 'PUT' ? 'urlencoded' : 'formdata';
+                        if(empty($route['jsonParameters'])){
+                            $mode = $route['methods'][0] === 'PUT' ? 'urlencoded' : 'formdata';
+                            $header = [];
+                            $body = [
+                                'mode' => $mode,
+                                $mode => collect($route['bodyParameters'])->map(function ($parameter, $key) {
+                                    return [
+                                        'key' => $key,
+                                        'value' => isset($parameter['value']) ? $parameter['value'] : '',
+                                        'type' => 'text',
+                                        'enabled' => true,
+                                    ];
+                                })->values()->toArray()
+                            ];
 
-                        return [
+                        }else{
+                            $mode = 'raw';
+                            $header = [['key'=>'Content-Type','value'=>'application/json',"description"=>'']];
+                            $toArray = collect($route['jsonParameters'])->map(function ($parameter, $key) {
+                                return isset($parameter['value']) ? $parameter['value'] : '';
+                            })->toArray();
+                            $body = [
+                                'mode' => $mode,
+                                $mode => json_encode([$toArray],JSON_UNESCAPED_UNICODE+JSON_PRETTY_PRINT )
+                            ];
+                        }
+                        return $return = [
                             'name' => $route['title'] != '' ? $route['title'] : url($route['uri']),
                             'request' => [
-                                'url' => url($route['uri']).(collect($route['queryParameters'])->isEmpty()
-                                    ? ''
-                                    : ('?'.implode('&', collect($route['queryParameters'])->map(function ($parameter, $key) {
-                                        return $key.'='.($parameter['value'] ?? '');
-                                    })->all()))),
+                                'url' => in_array($route['methods'][0],['GET','PUT']) ? url($route['uri'])."?{{token}}".
+                                    collect($route['queryParameters_1'])->map(function ($item,$key){
+                                        return $key."=".$item['value'];
+//                                        return [$key=>$item['value']];
+                                    })->join("&")
+                                     : url($route['uri']),
                                 'method' => $route['methods'][0],
-                                'header' => collect($route['headers'])
-                                    ->union([
-                                        'Accept' => 'application/json',
-                                    ])
-                                    ->map(function ($value, $header) {
-                                        return [
-                                            'key' => $header,
-                                            'value' => $value,
-                                        ];
-                                    })
-                                    ->values()->all(),
-                                'body' => [
-                                    'mode' => $mode,
-                                    $mode => collect($route['bodyParameters'])->map(function ($parameter, $key) {
-                                        return [
-                                            'key' => $key,
-                                            'value' => $parameter['value'] ?? '',
-                                            'type' => 'text',
-                                            'enabled' => true,
-                                        ];
-                                    })->values()->toArray(),
-                                ],
+                                'header' => $header,
+                                'body' => $body,
                                 'description' => $route['description'],
                                 'response' => [],
                             ],
